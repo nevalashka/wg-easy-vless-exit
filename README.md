@@ -44,10 +44,27 @@
 
 ## Выбор SNI
 
-- Сайт должен поддерживать TLS 1.3 и HTTP/2. Проверка: `curl -sI --http2 --tlsv1.3 https://SITE | head -1`.
-- Не за Cloudflare и не из блок-листов РКН.
-- Лучше всего — сайт в той же стране или у того же хостера (ASN), что и VPS. Тогда трафик к IP сервера под этим SNI выглядит естественно.
-- Если SNI сменить, его нужно сменить и на ноде (`VLESS_SNI`).
+Лучший SNI — настоящий сайт **из той же подсети**, что и VPS. Для DPI трафик к IP сервера под этим SNI тогда выглядит естественно. Чем пользоваться не стоит: Google, Microsoft, Apple, сайты за Cloudflare, домены с «vpn/proxy» в названии и сайты, явно не живущие у этого хостера (vk.com, банки) — это, скорее всего, чужие REALITY-серверы.
+
+1. Просканировать соседей утилитой [RealiTLScanner](https://github.com/XTLS/RealiTLScanner) на выходном сервере, через 2–3 минуты остановить (Ctrl+C):
+   ```bash
+   chmod +x RealiTLScanner-linux-amd64
+   ./RealiTLScanner-linux-amd64 -addr <IP_ВЫХОДА> -port 443 -thread 50 -timeout 5 -out sni.csv
+   ```
+2. Проверить кандидатов: домен должен резолвиться в ту же подсеть и отвечать по HTTP/2:
+   ```bash
+   for d in site1.example site2.example; do
+     ip=$(getent ahostsv4 $d | awk 'NR==1{print $1}')
+     t=$(curl -so /dev/null -w '%{http_version} %{time_connect}s' --tlsv1.3 --http2 --max-time 5 https://$d)
+     printf '%-28s %-16s %s\n' "$d" "${ip:-no-dns}" "$t"
+   done
+   ```
+3. В compose указать домен и IP соседа:
+   ```yaml
+   - REALITY_SNI=site1.example
+   - REALITY_TARGET=<IP соседа>:443
+   ```
+4. Если SNI сменился — обновить `VLESS_SNI` на первой ноде.
 
 ## Ротация ключей
 
@@ -65,7 +82,17 @@ echo -e "net.core.default_qdisc=fq\nnet.ipv4.tcp_congestion_control=bbr" > /etc/
 
 ## Сборка
 
+### GitHub Actions
+
+Workflow лежит в `.github/workflows/build.yml`:
+- **Ручной запуск**: Actions → Run workflow → ввести версию (например `1.0`). Образ соберётся и уйдёт в Docker Hub как `nevalashka/vless-reality-exit:1.0`.
+- **push / PR в main**: только проверка, что образ собирается. В Docker Hub ничего не публикуется.
+
+Секреты те же, что в проекте wg-easy-tun: `DOCKER_USERNAME`, `DOCKER_ACCESS_TOKEN`.
+
+### Локально
+
 ```bash
-DOCKER_BUILDKIT=1 docker build --no-cache -t nevalashka/vless-reality-exit:1.0 .
+DOCKER_BUILDKIT=1 docker build --no-cache -t nevalashka/vless-reality-exit:0.2 .
 docker build --build-arg XRAY_VERSION=v26.9.30 -t ... .   # другая версия Xray
 ```

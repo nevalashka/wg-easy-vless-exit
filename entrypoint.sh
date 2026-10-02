@@ -133,7 +133,10 @@ xray run -test -c "$CFG" >/dev/null || { xray run -test -c "$CFG"; die "конф
 
 # ---------- параметры для первой ноды ----------
 if [[ -z "$PUBLIC_HOST" ]]; then
-  PUBLIC_HOST=$(curl -4 -fsS --max-time 5 https://api.ipify.org 2>/dev/null || curl -4 -fsS --max-time 5 https://ifconfig.me 2>/dev/null || echo "<IP_ЭТОГО_СЕРВЕРА>")
+  # busybox wget (curl в образе нет); api4/ipv4 — только IPv4-адрес
+  PUBLIC_HOST=$(wget -qO- -T 5 https://api4.ipify.org 2>/dev/null || wget -qO- -T 5 https://ipv4.icanhazip.com 2>/dev/null || true)
+  PUBLIC_HOST=$(printf '%s' "$PUBLIC_HOST" | tr -d '[:space:]')
+  [[ "$PUBLIC_HOST" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || PUBLIC_HOST="<IP_ЭТОГО_СЕРВЕРА>"
 fi
 
 urlenc_path() { printf '%s' "$1" | sed 's#/#%2F#g'; }
