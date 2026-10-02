@@ -1,0 +1,52 @@
+name: Build & Publish vless-exit
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Введите версию образа (например, 0.1)"
+        required: true
+        default: "0."
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+env:
+  IMAGE: nevalashka/vless-reality-exit
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      # Проверяем код из репозитория
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Тег: из ввода при ручном запуске, иначе dev-<короткий sha> (только проверка сборки)
+      - name: Set image tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "TAG=${{ github.event.inputs.version }}" >> "$GITHUB_ENV"
+          else
+            echo "TAG=dev-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          fi
+
+      # Собираем Docker образ
+      - name: Build Docker image
+        run: |
+          docker build --no-cache -t "$IMAGE:$TAG" .
+
+      # Логинимся и публикуем — только при ручном запуске
+      - name: Login to Docker Hub
+        if: github.event_name == 'workflow_dispatch'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
+
+      - name: Push Docker image
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          docker push "$IMAGE:$TAG"
